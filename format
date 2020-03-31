@@ -1,0 +1,120 @@
+muttrcVarEqualsAliasFmt muttrcAliasFormatStr
+	$alias_format
+	" Ref: alias_format_str() in addrbook.c
+	'AliasFormat', '[afnrt]', 0, 0
+	muttrcAliasFormatEscapes
+	muttrcAliasFormatConditionals
+	muttrcFormatErrors
+
+muttrcVarEqualsAttachFmt muttrcAttachFormatStr
+	$attach_format
+	" Ref: attach_format_str() in recvattach.c
+	'AttachFormat', '[CcDdeFfIMmnQsTtuX]', 1, 1
+	muttrcAttachFormatEscapes
+	muttrcAttachFormatConditionals
+	muttrcFormatErrors
+
+muttrcVarEqualsComposeFmt muttrcComposeFormatStr
+	$compose_format
+	" Ref: compose_format_str() in compose.c
+	'ComposeFormat', '[ahlv]', 1, 0
+	muttrcComposeFormatEscapes
+	muttrcComposeFormatConditionals
+	muttrcFormatErrors
+
+muttrcVarEqualsFolderFmt muttrcFolderFormatStr
+	$folder_format, $vfolder_format
+	" Ref: folder_format_str() in browser.c
+	'FolderFormat', '[CDdFfgilmNnstu]', 1, 0
+	muttrcFolderFormatEscapes
+	muttrcFolderFormatConditionals
+	muttrcFormatErrors
+
+muttrcVarEqualsGrpIdxFmt muttrcGroupIndexFormatStr
+	$group_index_format
+	" Ref: group_index_format_str() in browser.c
+	'GroupIndexFormat', '[CdfMNns]', 1, 1
+	muttrcGroupIndexFormatEscapes
+	muttrcGroupIndexFormatConditionals
+	muttrcFormatErrors
+	muttrcTimeEscapes
+
+muttrcVarEqualsIdxFmt muttrcIndexFormatStr
+	$attribution, $forward_format, $index_format, $message_format, $pager_format
+	" Ref: index_format_str() in hdrline.c
+		* | \%cr    | Number of characters (bytes) in the message, including header
+		* | \%Fp    | Like %F, but plain. No contextual formatting is applied to recipient name
+		* | \%Gx    | Individual message tag (e.g. notmuch tags/imap flags)
+		* | \%zc    | Message crypto flags
+		* | \%zs    | Message status flags
+		* | \%zt    | Message tag flags
+		* | \%(fmt) | Date/time when the message was received
+		* | \%[fmt] | Message date/time converted to the local time zone
+		* | \%{fmt} | Message date/time converted to sender's time zone
+	'IndexFormat', '[AaBbCDdEeFfgHIiJKLlMmNnOPqRrSsTtuvWXxYyZ(<[{]\|G[a-zA-Z]\+\|Fp\=\|z[cst]\|cr\=', 1, 1
+	muttrcIndexFormatEscapes
+	muttrcIndexFormatConditionals
+	muttrcFormatErrors
+	muttrcTimeEscapes
+
+muttrcVarEqualsMixFmt muttrcMixFormatStr
+	$mix_entry_format
+	" Ref: mix_format_str() in remailer.c
+	'MixFormat', '[acns]', 0, 0
+	muttrcMixFormatEscapes
+	muttrcMixFormatConditionals
+	muttrcFormatErrors
+
+muttrcVarEqualsPGPCmdFmt muttrcPGPCmdFormatStr
+	pgp_*_command * 13
+	" Ref: fmt_pgp_command() ncrypt/pgpinvoke.c
+	'PGPCmdFormat', '[afprs]', 0, 1
+	muttrcPGPCmdFormatEscapes
+	muttrcPGPCmdFormatConditionals
+	muttrcVariable
+	muttrcFormatErrors
+
+muttrcVarEqualsPGPFmt muttrcPGPFormatStr
+	$pgp_entry_format
+	" Ref: crypt_format_str() in ncrypt/crypt_gpgme.c
+	" Ref: pgp_entry_fmt() in ncrypt/pgpkey.c
+	'PGPFormat', '[AaCcFfKkLlnptu[]', 0, 0
+	muttrcPGPFormatEscapes
+	muttrcPGPFormatConditionals
+	muttrcFormatErrors
+	muttrcPGPTimeEscapes
+
+muttrcVarEqualsQueryFmt muttrcQueryFormatStr
+	$query_format
+	" Ref: query_format_str() in query.c
+	'QueryFormat', '[acent]', 0, 1
+	muttrcQueryFormatEscapes
+	muttrcQueryFormatConditionals
+	muttrcFormatErrors
+
+muttrcVarEqualsSdbFmt muttrcSidebarFormatStr
+	$sidebar_format
+	" Ref: sidebar_format_str() in sidebar.c
+	'SidebarFormat', '[!BDdFLNnorStZ]', 1, 1
+	muttrcSidebarFormatEscapes
+	muttrcSidebarFormatConditionals
+	muttrcFormatErrors
+	muttrcTimeEscapes
+
+muttrcVarEqualsSmimeFmt muttrcSmimeFormatStr
+	smime_*_command * 10
+	" Ref: fmt_smime_command() in ncrypt/smime.c
+	'SmimeFormat', '[aCcdfiks]', 0, 1
+	muttrcSmimeFormatEscapes
+	muttrcSmimeFormatConditionals
+	muttrcVariable
+	muttrcFormatErrors
+
+muttrcVarEqualsStatusFmt muttrcStatusFormatStr
+	$status_format, $ts_icon_format, $ts_status_format
+	" Ref: status_format_str() in status.c
+	'StatusFormat', '[bDdFfhLlMmnoPpRrSstuVv]', 1, 1
+	muttrcStatusFormatEscapes
+	muttrcStatusFormatConditionals
+	muttrcFormatErrors
+

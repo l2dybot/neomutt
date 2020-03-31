@@ -1,0 +1,29 @@
+function! s:boolQuadGen(type, vars, deprecated)
+	if a:deprecated
+		let l:type = 'Deprecated' . a:type
+syntax keyword muttrcVarDeprecatedNum	contained skipwhite
+syntax keyword muttrcVarDeprecatedStr	contained skipwhite hdr_format msg_format nextgroup=muttrcVarEqualsIdxFmt
+syntax keyword muttrcVarDeprecatedStr	contained skipwhite xterm_icon xterm_title nextgroup=muttrcVarEqualsStatusFmt
+syntax keyword muttrcVarDeprecatedStr	contained skipwhite
+highlight def link muttrcVarDeprecatedBool		Error
+highlight def link muttrcVarDeprecatedQuad		Error
+highlight def link muttrcVarDeprecatedStr		Error
+
+" Deprecated Bools
+" List of DT_SYNONYM synonyms of Bools in MuttVars in mutt_config.c
+call s:boolQuadGen('Bool', [
+	\ 'edit_hdrs', 'envelope_from', 'forw_decode', 'forw_decrypt',
+	\ 'forw_quote', 'ignore_linear_white_space', 'pgp_autoencrypt',
+	\ 'pgp_autosign', 'pgp_auto_traditional', 'pgp_create_traditional',
+	\ 'pgp_replyencrypt', 'pgp_replysign', 'pgp_replysignencrypted',
+	\ 'xterm_set_titles'
+	\ ], 1)
+
+
+" CHECKED 2019-11-02
+" Deprecated Quads
+" List of DT_SYNONYM synonyms of Quads in MuttVars in mutt_config.c
+call s:boolQuadGen('Quad', [
+	\ 'mime_fwd', 'pgp_encrypt_self', 'pgp_verify_sig', 'smime_encrypt_self'
+	\ ], 1)
+

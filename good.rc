@@ -1,0 +1,187 @@
+# The GOOD set. All expandos should be linked to the 'Special' highlighting colour.
+
+# Each group of siblings use the same set of expandos.
+# They're all listed for completeness.
+
+# The 'set' commands are split to keep the line lengths manageable.
+# - line 1: lowercase 'a' to 'z'
+# - line 2: uppercase 'A' to 'Z'
+# - line 3+: misc formats
+
+# ------------------------------------------------------------------------------
+
+set alias_format = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set alias_format = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set alias_format = "apple %>A banana %|B cherry %*C damson"
+
+# ------------------------------------------------------------------------------
+
+set attach_format = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set attach_format = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set attach_format = "apple %>A banana %|B cherry %*C damson"
+
+# ------------------------------------------------------------------------------
+
+set compose_format = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set compose_format = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set compose_format = "apple %>A banana %|B cherry %*C damson"
+
+# ------------------------------------------------------------------------------
+
+set folder_format  = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set folder_format  = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set folder_format  = "apple %>A banana %|B cherry %*C damson"
+
+set vfolder_format = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set vfolder_format = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set vfolder_format = "apple %>A banana %|B cherry %*C damson"
+
+# ------------------------------------------------------------------------------
+
+set group_index_format = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set group_index_format = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set group_index_format = "apple %>A banana %|B cherry %*C damson"
+
+# ------------------------------------------------------------------------------
+
+set attribution    = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set attribution    = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set attribution    = "%cr %Fp %Gx %zc %zs %zt"
+set attribution    = "%(%h:%m:%s) %[%h:%m:%s] %{%h:%m:%s} "
+
+set forward_format = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set forward_format = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set forward_format = "%cr %Fp %Gx %zc %zs %zt"
+set forward_format = "%(%h:%m:%s) %[%h:%m:%s] %{%h:%m:%s} "
+
+set index_format   = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set index_format   = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set index_format   = "%cr %Fp %Gx %zc %zs %zt"
+set index_format   = "%(%h:%m:%s) %[%h:%m:%s] %{%h:%m:%s} "
+set index_format   = "apple %>A banana %|B cherry %*C damson %@name@"
+
+set message_format = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set message_format = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set message_format = "%cr %Fp %Gx %zc %zs %zt"
+set message_format = "%(%h:%m:%s) %[%h:%m:%s] %{%h:%m:%s} "
+set message_format = "apple %>A banana %|B cherry %*C damson"
+
+set pager_format   = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set pager_format   = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set pager_format   = "%cr %Fp %Gx %zc %zs %zt"
+set pager_format   = "%(%h:%m:%s) %[%h:%m:%s] %{%h:%m:%s} "
+set pager_format   = "apple %>A banana %|B cherry %*C damson"
+
+# ------------------------------------------------------------------------------
+
+set mix_entry_format = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set mix_entry_format = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set mix_entry_format = "apple %>A banana %|B cherry %*C damson"
+
+# ------------------------------------------------------------------------------
+
+set pgp_entry_format = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set pgp_entry_format = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set pgp_entry_format = "%[%h:%m:%s]"
+
+# ------------------------------------------------------------------------------
+
+set query_format = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set query_format = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set query_format = "apple %>A banana %|B cherry %*C damson"
+
+# ------------------------------------------------------------------------------
+
+set sidebar_format = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set sidebar_format = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set sidebar_format = "%!"
+set sidebar_format = "apple %>A banana %|B cherry %*C damson"
+
+# ------------------------------------------------------------------------------
+
+set status_format    = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set status_format    = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+set status_format    = "apple %>A banana %|B cherry %*C damson"
+
+set ts_icon_format   = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set ts_icon_format   = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set ts_status_format = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set ts_status_format = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+# ------------------------------------------------------------------------------
+
+set pgp_clearsign_command    = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set pgp_clearsign_command    = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set pgp_decode_command       = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set pgp_decode_command       = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set pgp_decrypt_command      = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set pgp_decrypt_command      = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set pgp_encrypt_only_command = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set pgp_encrypt_only_command = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set pgp_encrypt_sign_command = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set pgp_encrypt_sign_command = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set pgp_export_command       = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set pgp_export_command       = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set pgp_getkeys_command      = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set pgp_getkeys_command      = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set pgp_import_command       = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set pgp_import_command       = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set pgp_list_pubring_command = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set pgp_list_pubring_command = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set pgp_list_secring_command = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set pgp_list_secring_command = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set pgp_sign_command         = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set pgp_sign_command         = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set pgp_verify_command       = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set pgp_verify_command       = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set pgp_verify_key_command   = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set pgp_verify_key_command   = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+# ------------------------------------------------------------------------------
+
+set smime_decrypt_command         = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set smime_decrypt_command         = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set smime_encrypt_command         = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set smime_encrypt_command         = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set smime_get_cert_command        = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set smime_get_cert_command        = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set smime_get_cert_email_command  = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set smime_get_cert_email_command  = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set smime_get_signer_cert_command = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set smime_get_signer_cert_command = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set smime_import_cert_command     = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set smime_import_cert_command     = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set smime_pk7out_command          = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set smime_pk7out_command          = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set smime_sign_command            = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set smime_sign_command            = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set smime_verify_command          = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set smime_verify_command          = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+set smime_verify_opaque_command   = "%a %b %c %d %e %f %g %h %i %j %k %l %m %n %o %p %q %r %s %t %u %v %w %x %y %z"
+set smime_verify_opaque_command   = "%A %B %C %D %E %F %G %H %I %J %K %L %M %N %O %P %Q %R %S %T %U %V %W %X %Y %Z"
+
+# ------------------------------------------------------------------------------
+
+# vim: syn=neomuttrc
