@@ -1,0 +1,206 @@
+From c33d2e8b03e36e7e2bb6d29e851de94882758f7a Mon Sep 17 00:00:00 2001
+From: Kevin McCarthy <kevin@8t8.us>
+Date: Thu, 30 Jan 2020 15:19:49 -0800
+Subject: Pass sctx to mutt_builtin_editor() and mutt_edit_headers()
+
+This will be used to set the sctx signas instead of globals for header
+editing.
+
+Upstream-commit: https://gitlab.com/muttmua/mutt/commit/c33d2e8b03e36e7e2bb6d29e851de94882758f7a
+Co-authored-by: Richard Russon <rich@flatcap.org>
+---
+ compose.c |  5 ++---
+ edit.c    | 10 ++++++++--
+ mutt_header.c | 25 ++++++++++++++-----------
+ protos.h  |  4 ++--
+ send.c    |  6 +++---
+ 5 files changed, 29 insertions(+), 21 deletions(-)
+
+diff --git a/compose.c b/compose.c
+index 60f7528b..e211c3bd 100644
+--- a/compose.c
++++ b/compose.c
+@@ -1133,8 +1133,7 @@ int mutt_compose_menu(SEND_CONTEXT *sctx)
+         {
+           char *tag = NULL, *err = NULL;
+           mutt_env_to_local(msg->env);
+-          mutt_edit_headers(NONULL(C_Editor), msg->content->filename, msg,
+-                             sctx->fcc);
++          mutt_edit_headers(NONULL(C_Editor), sctx);
+           if (mutt_env_to_intl(msg->env, &tag, &err))
+           {
+             mutt_error(_("Bad IDN in \"%s\": '%s'"), tag, err);
+@@ -1148,7 +1147,7 @@ int mutt_compose_menu(SEND_CONTEXT *sctx)
+              attachment list could change if the user invokes ~v to edit
+              the message with headers, in which we need to execute the
+              code below to regenerate the index array */
+-          mutt_builtin_editor(msg->content->filename, msg, sctx->cur);
++          mutt_builtin_editor(sctx);
+         }
+ 
+         mutt_rfc3676_space_stuff(msg);
+diff --git a/edit.c b/edit.c
+index fbb99822..40fad61c 100644
+--- a/edit.c
++++ b/edit.c
+@@ -316,8 +316,10 @@ static void be_edit_header(struct Envelope *e, int force)
+   }
+ }
+ 
+-int mutt_builtin_editor(const char *path, struct Email *msg, struct Email *cur)
++int mutt_builtin_editor(SEND_CONTEXT *sctx)
+ {
++  struct Email *msg, *cur;
++  const char *path;
+   char **buf = NULL;
+   int bufmax = 0, buflen = 0;
+   char tmp[1024];
+@@ -326,6 +328,10 @@ int mutt_builtin_editor(const char *path, struct Email *msg, struct Email *cur)
+   int i;
+   char *p;
+ 
++  msg = sctx->msg;
++  cur = sctx->cur;
++  path = sctx->msg->content->filename;
++
+   scrollok(stdscr, TRUE);
+ 
+   be_edit_header(msg->env, 0);
+@@ -450,7 +456,7 @@ int mutt_builtin_editor(const char *path, struct Email *msg, struct Email *cur)
+             if (option(C_EditHeaders))
+             {
+               mutt_env_to_local(msg->env);
+-              mutt_edit_headers(NONULL(C_Visual), path, msg, NULL);
++              mutt_edit_headers(NONULL(C_Visual), sctx);
+               if (mutt_env_to_intl(msg->env, &tag, &err))
+                 printw(_("Bad IDN in %s: '%s'\n"), tag, err);
+             }
+diff --git a/mutt_header.c b/mutt_header.c
+index b1a82cae..96552873 100644
+--- a/mutt_header.c
++++ b/mutt_header.c
+@@ -30,10 +30,10 @@
+ #include <stdint.h>
+ 
+ void mutt_edit_headers(const char *editor,
+-                        const char *body,
+-                        struct Email *msg,
+-                        struct Buffer *fcc)
++                        SEND_CONTEXT *sctx)
+ {
++  struct Email *msg;
++  const char *filename;
+   struct Buffer *path = NULL;        /* tempfile used to edit headers + body */
+   char buffer[1024];
+   const char *p;
+@@ -44,6 +44,9 @@ void mutt_edit_headers(const char *editor,
+   struct stat st;
+   struct ListHead *cur, **last = NULL, *tmp;
+ 
++  msg = sctx->msg;
++  filename = msg->content->filename;
++
+   path = mutt_buffer_pool_get();
+   mutt_buffer_mktemp(path);
+   if ((ofp = mutt_file_fopen(mutt_b2s(path), "w")) == NULL)
+@@ -57,9 +60,9 @@ void mutt_edit_headers(const char *editor,
+   fputc('\n', ofp);        /* tie off the header. */
+ 
+   /* now copy the body of the message. */
+-  if ((ifp = fopen(body, "r")) == NULL)
++  if ((ifp = fopen(filename, "r")) == NULL)
+   {
+-    mutt_perror(body);
++    mutt_perror(filename);
+     goto cleanup;
+   }
+ 
+@@ -86,7 +89,7 @@ void mutt_edit_headers(const char *editor,
+     goto cleanup;
+   }
+ 
+-  mutt_file_unlink(body);
++  mutt_file_unlink(filename);
+   mutt_free_list(&msg->env->userhdrs);
+ 
+   /* Read the temp file back in */
+@@ -96,11 +99,11 @@ void mutt_edit_headers(const char *editor,
+     goto cleanup;
+   }
+ 
+-  if ((ofp = mutt_file_fopen(body, "w")) == NULL)
++  if ((ofp = mutt_file_fopen(filename, "w")) == NULL)
+   {
+     /* intentionally leak a possible temporary file here */
+     mutt_file_fclose(&ifp);
+-    mutt_perror(body);
++    mutt_perror(filename);
+     goto cleanup;
+   }
+ 
+@@ -140,13 +143,13 @@ void mutt_edit_headers(const char *editor,
+   {
+     keep = 1;
+ 
+-    if (fcc && mutt_str_strncasecmp("fcc:", cur->data, 4) == 0)
++    if (mutt_str_strncasecmp("fcc:", cur->data, 4) == 0)
+     {
+       p = mutt_str_skip_email_wsp(cur->data + 4);
+       if (*p)
+       {
+-        mutt_buffer_strcpy(fcc, p);
+-        mutt_buffer_pretty_mailbox(fcc);
++        mutt_buffer_strcpy(sctx->fcc, p);
++        mutt_buffer_pretty_mailbox(sctx->fcc);
+       }
+       keep = 0;
+     }
+diff --git a/protos.h b/protos.h
+index 2dc556e4..c0145514 100644
+--- a/protos.h
++++ b/protos.h
+@@ -192,7 +192,7 @@ void mutt_display_address(struct Envelope *);
+ void mutt_display_sanitize(char *);
+ int mutt_edit_content_type(struct Email *, struct Body *, FILE *);
+ void mutt_edit_file(const char *, const char *);
+-void mutt_edit_headers(const char *, const char *, struct Email *, struct Buffer *);
++void mutt_edit_headers(const char *, SEND_CONTEXT *);
+ char **mutt_envlist(void);
+ void mutt_envlist_set(const char *name, const char *value, int overwrite);
+ int mutt_filter_unprintable(char **);
+@@ -292,7 +292,7 @@ void mutt_alias_delete_reverse(struct Alias *t);
+ int mutt_alloc_color(int fg, int bg);
+ int mutt_any_key_to_continue(const char *);
+ char *mutt_replacelist_apply(char *, size_t, char *, struct ReplaceList *);
+-int mutt_builtin_editor(const char *, struct Email *, struct Email *);
++int mutt_builtin_editor(SEND_CONTEXT *);
+ int mutt_can_decode(struct Body *);
+ int mutt_change_flag(struct Email *, int);
+ int check_alias_name(const char *, char *, size_t);
+diff --git a/send.c b/send.c
+index 82d2e2ba..e3ce2449 100644
+--- a/send.c
++++ b/send.c
+@@ -1898,7 +1898,7 @@ static int send_message_resume_first_edit(SEND_CONTEXT *sctx)
+ 
+   if (sctx->flags & SEND_MAILX)
+   {
+-    if (mutt_builtin_editor(sctx->msg->content->filename, sctx->msg, sctx->cur) == -1)
++    if (mutt_builtin_editor(sctx) == -1)
+       goto cleanup;
+   }
+   else if (!(sctx->flags & SEND_BATCH))
+@@ -1930,11 +1930,11 @@ static int send_message_resume_first_edit(SEND_CONTEXT *sctx)
+           goto cleanup;
+       }
+       else if (!C_Editor || mutt_str_strcmp("builtin", C_Editor) == 0)
+-        mutt_builtin_editor(sctx->msg->content->filename, sctx->msg, sctx->cur);
++        mutt_builtin_editor(sctx);
+       else if (option(C_EditHeaders))
+       {
+         mutt_env_to_local(sctx->msg->env);
+-        mutt_edit_headers(C_Editor, sctx->msg->content->filename, sctx->msg, sctx->fcc);
++        mutt_edit_headers(C_Editor, sctx);
+         mutt_env_to_intl(sctx->msg->env, NULL, NULL);
+       }
+       else

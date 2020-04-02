@@ -1,0 +1,470 @@
+From d3d0f3a23dfac4c326f68cdc99430858e2572198 Mon Sep 17 00:00:00 2001
+From: Kevin McCarthy <kevin@8t8.us>
+Date: Sun, 2 Feb 2020 15:10:34 -0800
+Subject: Change send_menus to set sctx instead of globals
+
+Add a "cleared" bit for smime_crypt_alg.  Otherwise clearing the value
+in ncrypt/smime.c's menu would cause the compose menu and mutt_protect() to
+fall back to using SmimeEncryptWith.
+
+Upstream-commit: https://gitlab.com/muttmua/mutt/commit/d3d0f3a23dfac4c326f68cdc99430858e2572198
+Co-authored-by: Richard Russon <rich@flatcap.org>
+---
+ compose.c                 | 10 +++++++---
+ ncrypt/crypt_gpgme.c             | 18 ++++++++++--------
+ ncrypt/crypt_gpgme.h             |  4 ++--
+ ncrypt/crypt_mod_pgp_classic.c   |  4 ++--
+ ncrypt/crypt_mod_pgp_gpgme.c     |  4 ++--
+ ncrypt/crypt_mod_smime_classic.c |  4 ++--
+ ncrypt/crypt_mod_smime_gpgme.c   |  4 ++--
+ ncrypt/crypt_mod.h               |  2 +-
+ ncrypt/crypt.c                   |  4 ++--
+ ncrypt/cryptglue.c               | 12 ++++--------
+ ncrypt/crypt.h              |  4 ++--
+ ncrypt/pgp.c                     | 11 ++++++-----
+ ncrypt/pgp.h                     |  2 +-
+ send.h                    |  1 +
+ ncrypt/smime.c                   | 30 ++++++++++++++++--------------
+ ncrypt/smime.h                   |  2 +-
+ 16 files changed, 61 insertions(+), 55 deletions(-)
+
+diff --git a/compose.c b/compose.c
+index f3fa44b0..27182fb2 100644
+--- a/compose.c
++++ b/compose.c
+@@ -356,10 +356,14 @@ static void redraw_crypt_lines(struct ComposeRedrawData *rd)
+            (C_SmimeSignAs ? C_SmimeSignAs : _("<default>")));
+   }
+ 
++  /* Note: the smime crypt alg can be cleared in ncrypt/smime.c.
++   * this causes a NULL sctx->smime_crypt_alg to override SmimeEncryptWith.
++   */
+   if ((WithCrypto & APPLICATION_SMIME)
+       && (msg->security & APPLICATION_SMIME)
+       && (msg->security & ENCRYPT)
+-      && (SmimeEncryptWith || sctx->smime_crypt_alg))
++      && (sctx->smime_crypt_alg ||
++         (!sctx->smime_crypt_alg_cleared && SmimeEncryptWith)))
+   {
+     SET_COLOR(MT_COLOR_COMPOSE_HEADER);
+     mutt_window_mvprintw(MuttIndexWindow, HDR_CRYPTINFO, 40, "%s", _("Encrypt with: "));
+@@ -1812,7 +1816,7 @@ int mutt_compose_menu(SEND_CONTEXT *sctx)
+           msg->security |= APPLICATION_PGP;
+           update_crypt_info(&rd);
+         }
+-        msg->security = crypt_pgp_send_menu(msg);
++        crypt_pgp_send_menu(sctx);
+         update_crypt_info(&rd);
+         mutt_message_hook(NULL, msg, MUTT_SEND2_HOOK);
+         break;
+@@ -1849,7 +1853,7 @@ int mutt_compose_menu(SEND_CONTEXT *sctx)
+           msg->security |= APPLICATION_SMIME;
+           update_crypt_info(&rd);
+         }
+-        msg->security = crypt_smime_send_menu(msg);
++        crypt_smime_send_menu(sctx);
+         update_crypt_info(&rd);
+         mutt_message_hook(NULL, msg, MUTT_SEND2_HOOK);
+         break;
+diff --git a/ncrypt/crypt_gpgme.c b/crypt-gpgme.c
+index 488ac665..774d5a23 100644
+--- a/ncrypt/crypt_gpgme.c
++++ b/ncrypt/crypt_gpgme.c
+@@ -5271,13 +5271,16 @@ void smime_gpgme_init(void)
+   init_smime();
+ }
+ 
+-static int gpgme_send_menu(struct Email *msg, int is_smime)
++static void gpgme_send_menu(SEND_CONTEXT *sctx, int is_smime)
+ {
++  struct Email *msg;
+   crypt_key_t *p;
+   char input_signas[128];
+   char *prompt, *letters, *choices;
+   int choice;
+ 
++  msg = sctx->msg;
++
+   if (is_smime)
+     msg->security |= APPLICATION_SMIME;
+   else
+@@ -5371,7 +5374,8 @@ static int gpgme_send_menu(struct Email *msg, int is_smime)
+       {
+         snprintf(input_signas, sizeof(input_signas), "0x%s",
+             crypt_fpr_or_lkeyid(p));
+-        mutt_str_replace(is_smime? &C_SmimeSignAs : &C_PgpSignAs, input_signas);
++        mutt_str_replace(is_smime? &sctx->smime_default_key : &sctx->pgp_sign_as,
++                          input_signas);
+         crypt_free_key(&p);
+ 
+         msg->security |= SIGN;
+@@ -5418,18 +5422,16 @@ static int gpgme_send_menu(struct Email *msg, int is_smime)
+       break;
+     }
+   }
+-
+-  return (msg->security);
+ }
+ 
+-int pgp_gpgme_send_menu(struct Email *msg)
++void pgp_gpgme_send_menu(SEND_CONTEXT *sctx)
+ {
+-  return gpgme_send_menu(msg, 0);
++  gpgme_send_menu(sctx, 0);
+ }
+ 
+-int smime_gpgme_send_menu(struct Email *msg)
++void smime_gpgme_send_menu(SEND_CONTEXT *sctx)
+ {
+-  return gpgme_send_menu(msg, 1);
++  gpgme_send_menu(sctx, 1);
+ }
+ 
+ static int verify_sender(struct Email *h, gpgme_protocol_t protocol)
+diff --git a/ncrypt/crypt_gpgme.h b/crypt-gpgme.h
+index 207bcc4f..ba95d338 100644
+--- a/ncrypt/crypt_gpgme.h
++++ b/ncrypt/crypt_gpgme.h
+@@ -48,8 +48,8 @@ struct Body *smime_gpgme_sign_message(struct Body *a);
+ int pgp_gpgme_verify_one(struct Body *sigbdy, struct State *s, const char *tempfile);
+ int smime_gpgme_verify_one(struct Body *sigbdy, struct State *s, const char *tempfile);
+ 
+-int pgp_gpgme_send_menu(struct Email *msg);
+-int smime_gpgme_send_menu(struct Email *msg);
++void pgp_gpgme_send_menu(SEND_CONTEXT *sctx);
++void smime_gpgme_send_menu(SEND_CONTEXT *sctx);
+ 
+ int smime_gpgme_verify_sender(struct Email *h);
+ 
+diff --git a/ncrypt/crypt_mod_pgp_classic.c b/crypt-mod-pgp-classic.c
+index 2773a818..085a2042 100644
+--- a/ncrypt/crypt_mod_pgp_classic.c
++++ b/ncrypt/crypt_mod_pgp_classic.c
+@@ -61,9 +61,9 @@ static int crypt_mod_pgp_verify_one(struct Body *sigbdy, struct State *s, const char *tempf)
+   return pgp_verify_one(sigbdy, s, tempf);
+ }
+ 
+-static int crypt_mod_pgp_send_menu(struct Email *msg)
++static void crypt_mod_pgp_send_menu(SEND_CONTEXT *sctx)
+ {
+-  return pgp_send_menu(msg);
++  pgp_send_menu(sctx);
+ }
+ 
+ static struct Body *crypt_mod_pgp_encrypt_message(struct Body *a, char *keylist, int sign)
+diff --git a/ncrypt/crypt_mod_pgp_gpgme.c b/crypt-mod-pgp-gpgme.c
+index b2eb6377..4b016123 100644
+--- a/ncrypt/crypt_mod_pgp_gpgme.c
++++ b/ncrypt/crypt_mod_pgp_gpgme.c
+@@ -85,9 +85,9 @@ static int crypt_mod_pgp_verify_one(struct Body *sigbdy, struct State *s, const char *tempf)
+   return pgp_gpgme_verify_one(sigbdy, s, tempf);
+ }
+ 
+-static int crypt_mod_pgp_send_menu(struct Email *msg)
++static void crypt_mod_pgp_send_menu(SEND_CONTEXT *sctx)
+ {
+-  return pgp_gpgme_send_menu(msg);
++  pgp_gpgme_send_menu(sctx);
+ }
+ 
+ static struct Body *crypt_mod_pgp_encrypt_message(struct Body *a, char *keylist, int sign)
+diff --git a/ncrypt/crypt_mod_smime_classic.c b/crypt-mod-smime-classic.c
+index acce9fc7..329345b2 100644
+--- a/ncrypt/crypt_mod_smime_classic.c
++++ b/ncrypt/crypt_mod_smime_classic.c
+@@ -61,9 +61,9 @@ static int crypt_mod_smime_verify_one(struct Body *sigbdy, struct State *s, const char *tempf
+   return smime_verify_one(sigbdy, s, tempf);
+ }
+ 
+-static int crypt_mod_smime_send_menu(struct Email *msg)
++static void crypt_mod_smime_send_menu(SEND_CONTEXT *sctx)
+ {
+-  return smime_send_menu(msg);
++  smime_send_menu(sctx);
+ }
+ 
+ static void crypt_mod_smime_getkeys(struct Envelope *env)
+diff --git a/ncrypt/crypt_mod_smime_gpgme.c b/crypt-mod-smime-gpgme.c
+index 006a5c2f..0ea065ba 100644
+--- a/ncrypt/crypt_mod_smime_gpgme.c
++++ b/ncrypt/crypt_mod_smime_gpgme.c
+@@ -70,9 +70,9 @@ static int crypt_mod_smime_verify_one(struct Body *sigbdy, struct State *s, const char *tempf
+   return smime_gpgme_verify_one(sigbdy, s, tempf);
+ }
+ 
+-static int crypt_mod_smime_send_menu(struct Email *msg)
++static void crypt_mod_smime_send_menu(SEND_CONTEXT *sctx)
+ {
+-  return smime_gpgme_send_menu(msg);
++  smime_gpgme_send_menu(sctx);
+ }
+ 
+ static struct Body *crypt_mod_smime_build_smime_entity(struct Body *a, char *certlist)
+diff --git a/ncrypt/crypt_mod.h b/crypt-mod.h
+index afce2335..e5f0c333 100644
+--- a/ncrypt/crypt_mod.h
++++ b/ncrypt/crypt_mod.h
+@@ -53,7 +53,7 @@ typedef int(*crypt_func_verify_one_t)(struct Body *sigbdy, struct State *s,
+ typedef void(*crypt_func_pgp_extract_keys_from_attachment_list_t)
+                                           (FILE *fp, int tag, struct Body *top);
+ 
+-typedef int(*crypt_func_send_menu_t)(struct Email *msg);
++typedef void(*crypt_func_send_menu_t)(SEND_CONTEXT *sctx);
+ 
+  /*(SMIME) */
+ typedef void(*crypt_func_smime_getkeys_t)(struct Envelope *env);
+diff --git a/ncrypt/crypt.c b/ncrypt/crypt.c
+index b7304c46..92ba6c31 100644
+--- a/ncrypt/crypt.c
++++ b/ncrypt/crypt.c
+@@ -176,7 +176,7 @@ int mutt_protect(SEND_CONTEXT *sctx, char *keylist, int postpone)
+     orig_smime_sign_as = mutt_str_strdup(C_SmimeSignAs);
+     mutt_str_replace(&C_SmimeSignAs, sctx->smime_default_key);
+   }
+-  if (sctx->smime_crypt_alg)
++  if (sctx->smime_crypt_alg || sctx->smime_crypt_alg_cleared)
+   {
+     orig_smime_crypt_alg = mutt_str_strdup(SmimeEncryptWith);
+     mutt_str_replace(&SmimeEncryptWith, sctx->smime_crypt_alg);
+@@ -383,7 +383,7 @@ cleanup:
+     mutt_str_replace(&C_PgpSignAs, orig_pgp_sign_as);
+   if (sctx->smime_default_key)
+     mutt_str_replace(&C_SmimeSignAs, orig_smime_sign_as);
+-  if (sctx->smime_crypt_alg)
++  if (sctx->smime_crypt_alg || sctx->smime_crypt_alg_cleared)
+     mutt_str_replace(&SmimeEncryptWith, orig_smime_crypt_alg);
+ 
+   return rc;
+diff --git a/ncrypt/cryptglue.c b/ncrypt/cryptglue.c
+index 2cf3942b..9764e599 100644
+--- a/ncrypt/cryptglue.c
++++ b/ncrypt/cryptglue.c
+@@ -315,12 +315,10 @@ int crypt_pgp_verify_one(struct Body *sigbdy, struct State *s, const char *tempf)
+ }
+ 
+ 
+-int crypt_pgp_send_menu(struct Email *msg)
++void crypt_pgp_send_menu(SEND_CONTEXT *sctx)
+ {
+   if (CRYPT_MOD_CALL_CHECK(PGP, send_menu))
+-    return (CRYPT_MOD_CALL(PGP, send_menu))(msg);
+-
+-  return 0;
++   (CRYPT_MOD_CALL(PGP, send_menu))(sctx);
+ }
+ 
+ 
+@@ -449,12 +447,10 @@ int crypt_smime_verify_one(struct Body *sigbdy, struct State *s, const char *tempf)
+   return -1;
+ }
+ 
+-int crypt_smime_send_menu(struct Email *msg)
++void crypt_smime_send_menu(SEND_CONTEXT *sctx)
+ {
+   if (CRYPT_MOD_CALL_CHECK(SMIME, send_menu))
+-    return (CRYPT_MOD_CALL(SMIME, send_menu))(msg);
+-
+-  return 0;
++   (CRYPT_MOD_CALL(SMIME, send_menu))(sctx);
+ }
+ 
+ void crypt_smime_set_sender(const char *sender)
+diff --git a/ncrypt/crypt.h b/ncrypt/crypt.h
+index 9511507b..e4de78ca 100644
+--- a/ncrypt/crypt.h
++++ b/ncrypt/crypt.h
+@@ -249,7 +249,7 @@ struct Body *crypt_pgp_encrypt_message(struct Email *msg, struct Body *a, char *keylist, int sign);
+ /* Invoke the PGP command to import a key. */
+ void crypt_pgp_invoke_import(const char *fname);
+ 
+-int crypt_pgp_send_menu(struct Email *msg);
++void crypt_pgp_send_menu(SEND_CONTEXT *sctx);
+ 
+ /* fixme: needs documentation */
+ int crypt_pgp_verify_one(struct Body *sigbdy, struct State *s, const char *tempf);
+@@ -299,7 +299,7 @@ struct Body *crypt_smime_build_smime_entity(struct Body *a, char *certlist);
+ /* Add a certificate and update index file(externally). */
+ void crypt_smime_invoke_import(const char *infile, const char *mailbox);
+ 
+-int crypt_smime_send_menu(struct Email *msg);
++void crypt_smime_send_menu(SEND_CONTEXT *sctx);
+ 
+ void crypt_smime_set_sender(const char *sender);
+ 
+diff --git a/ncrypt/pgp.c b/ncrypt/pgp.c
+index 2c784fbd..92cf6101 100644
+--- a/ncrypt/pgp.c
++++ b/ncrypt/pgp.c
+@@ -1797,16 +1797,19 @@ cleanup:
+   return b;
+ }
+ 
+-int pgp_send_menu(struct Email *msg)
++void pgp_send_menu(SEND_CONTEXT *sctx)
+ {
++  struct Email *msg;
+   struct PgpKeyInfo * p;
+   char input_signas[128];
+   char *prompt, *letters, *choices;
+   char promptbuf[1024];
+   int choice;
+ 
++  msg = sctx->msg;
++
+   if (!(WithCrypto & APPLICATION_PGP))
+-    return msg->security;
++    return;
+ 
+   /* If autoinline and no crypto options set, then set inline. */
+   if (option(C_PgpAutoinline) &&
+@@ -1918,7 +1921,7 @@ int pgp_send_menu(struct Email *msg)
+         {
+           snprintf(input_signas, sizeof(input_signas), "0x%s",
+                     pgp_fpr_or_lkeyid(p));
+-          mutt_str_replace(&C_PgpSignAs, input_signas);
++          mutt_str_replace(&sctx->pgp_sign_as, input_signas);
+           pgp_free_key(&p);
+ 
+           msg->security |= SIGN;
+@@ -1955,8 +1958,6 @@ int pgp_send_menu(struct Email *msg)
+         break;
+     }
+   }
+-
+-  return (msg->security);
+ }
+ 
+ 
+diff --git a/ncrypt/pgp.h b/ncrypt/pgp.h
+index a62e251a..92a24dc8 100644
+--- a/ncrypt/pgp.h
++++ b/ncrypt/pgp.h
+@@ -104,6 +104,6 @@ struct Body *pgp_traditional_encryptsign(struct Body *, int, char *);
+ struct Body *pgp_encrypt_message(struct Body *, char *, int);
+ struct Body *pgp_sign_message(struct Body *);
+ 
+-int pgp_send_menu(struct Email *msg);
++void pgp_send_menu(SEND_CONTEXT *sctx);
+ 
+ #endif /* CRYPT_BACKEND_CLASSIC_PGP */
+diff --git a/send.h b/send.h
+index 105f6cb6..e282aaea 100644
+--- a/send.h
++++ b/send.h
+@@ -38,6 +38,7 @@ typedef struct send_ctx
+   char *pgp_sign_as;
+   char *smime_default_key;
+   char *smime_crypt_alg;
++  unsigned int smime_crypt_alg_cleared : 1;
+ } SEND_CONTEXT;
+ 
+ struct Address *mutt_remove_xrefs(struct Address *, struct Address *);
+diff --git a/ncrypt/smime.c b/ncrypt/smime.c
+index 8ed33008..05d397a6 100644
+--- a/ncrypt/smime.c
++++ b/ncrypt/smime.c
+@@ -2222,14 +2222,17 @@ int smime_application_smime_handler(struct Body *m, struct State *s)
+   return rv;
+ }
+ 
+-int smime_send_menu(struct Email *msg)
++void smime_send_menu(SEND_CONTEXT *sctx)
+ {
++  struct Email *msg;
+   struct SmimeKey *key;
+   char *prompt, *letters, *choices;
+   int choice;
+ 
++  msg = sctx->msg;
++
+   if (!(WithCrypto & APPLICATION_SMIME))
+-    return msg->security;
++    return;
+ 
+   msg->security |= APPLICATION_SMIME;
+ 
+@@ -2295,10 +2298,10 @@ int smime_send_menu(struct Email *msg)
+                                                   _("dt")))
+               {
+                 case 1:
+-                  mutt_str_replace(&SmimeEncryptWith, "des");
++                  mutt_str_replace(&sctx->smime_crypt_alg, "des");
+                   break;
+                 case 2:
+-                  mutt_str_replace(&SmimeEncryptWith, "des3");
++                  mutt_str_replace(&sctx->smime_crypt_alg, "des3");
+                   break;
+               }
+               break;
+@@ -2308,13 +2311,13 @@ int smime_send_menu(struct Email *msg)
+                                                   _("468")))
+               {
+                 case 1:
+-                  mutt_str_replace(&SmimeEncryptWith, "rc2-40");
++                  mutt_str_replace(&sctx->smime_crypt_alg, "rc2-40");
+                   break;
+                 case 2:
+-                  mutt_str_replace(&SmimeEncryptWith, "rc2-64");
++                  mutt_str_replace(&sctx->smime_crypt_alg, "rc2-64");
+                   break;
+                 case 3:
+-                  mutt_str_replace(&SmimeEncryptWith, "rc2-128");
++                  mutt_str_replace(&sctx->smime_crypt_alg, "rc2-128");
+                   break;
+               }
+               break;
+@@ -2324,19 +2327,20 @@ int smime_send_menu(struct Email *msg)
+                                                   _("895")))
+               {
+                 case 1:
+-                  mutt_str_replace(&SmimeEncryptWith, "aes128");
++                  mutt_str_replace(&sctx->smime_crypt_alg, "aes128");
+                   break;
+                 case 2:
+-                  mutt_str_replace(&SmimeEncryptWith, "aes192");
++                  mutt_str_replace(&sctx->smime_crypt_alg, "aes192");
+                   break;
+                 case 3:
+-                  mutt_str_replace(&SmimeEncryptWith, "aes256");
++                  mutt_str_replace(&sctx->smime_crypt_alg, "aes256");
+                   break;
+               }
+               break;
+ 
+             case 4: /*(c)lear */
+-              FREE(&SmimeEncryptWith);
++              FREE(&sctx->smime_crypt_alg);
++              sctx->smime_crypt_alg_cleared = 1;
+               /* fall through */
+             case -1: /* Ctrl-G or Enter */
+               choice = 0;
+@@ -2359,7 +2363,7 @@ int smime_send_menu(struct Email *msg)
+ 
+         if ((key = smime_ask_for_key(_("Sign as: "), KEYFLAG_CANSIGN, 0)))
+         {
+-          mutt_str_replace(&C_SmimeSignAs, key->hash);
++          mutt_str_replace(&sctx->smime_default_key, key->hash);
+           smime_free_key(&key);
+ 
+           msg->security |= SIGN;
+@@ -2394,8 +2398,6 @@ int smime_send_menu(struct Email *msg)
+         break;
+     }
+   }
+-
+-  return (msg->security);
+ }
+ 
+ 
+diff --git a/ncrypt/smime.h b/ncrypt/smime.h
+index 2bd36d35..441a9718 100644
+--- a/ncrypt/smime.h
++++ b/ncrypt/smime.h
+@@ -63,6 +63,6 @@ char *smime_find_keys(struct Address *adrlist, int oppenc_mode);
+ 
+ void  smime_invoke_import(const char *, const char *);
+ 
+-int smime_send_menu(struct Email *msg);
++void smime_send_menu(SEND_CONTEXT *sctx);
+ 
+ #endif

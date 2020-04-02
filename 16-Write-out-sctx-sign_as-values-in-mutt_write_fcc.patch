@@ -1,0 +1,128 @@
+From 9defa202e35a2445405170255c95d3682ae5b065 Mon Sep 17 00:00:00 2001
+From: Kevin McCarthy <kevin@8t8.us>
+Date: Mon, 3 Feb 2020 13:25:30 -0800
+Subject: Write out sctx sign_as values in mutt_write_fcc()
+
+
+Upstream-commit: https://gitlab.com/muttmua/mutt/commit/9defa202e35a2445405170255c95d3682ae5b065
+Co-authored-by: Richard Russon <rich@flatcap.org>
+---
+ compose.c |  2 +-
+ protos.h  |  2 +-
+ send.c    |  6 +++---
+ sendlib.c | 17 ++++++++++-------
+ 4 files changed, 15 insertions(+), 12 deletions(-)
+
+diff --git a/compose.c b/compose.c
+index 27182fb2..1f36b1e5 100644
+--- a/compose.c
++++ b/compose.c
+@@ -1782,7 +1782,7 @@ int mutt_compose_menu(SEND_CONTEXT *sctx)
+           if (msg->content->next)
+             msg->content = mutt_make_multipart_mixed(msg->content);
+ 
+-          if (mutt_write_fcc(mutt_b2s(fname), msg, NULL, 0, NULL) == 0)
++          if (mutt_write_fcc(mutt_b2s(fname), sctx, NULL, 0, NULL) == 0)
+             mutt_message _("Message written.");
+ 
+           msg->content = mutt_remove_multipart_mixed(msg->content);
+diff --git a/protos.h b/protos.h
+index c0145514..4d9e32d9 100644
+--- a/protos.h
++++ b/protos.h
+@@ -391,7 +391,7 @@ void mutt_update_num_postponed(void);
+ int mutt_wait_filter(pid_t);
+ int mutt_wait_interactive_filter(pid_t);
+ int mutt_which_case(const char *);
+-int mutt_write_fcc(const char *path, struct Email *hdr, const char *msgid, int, const char *);
++int mutt_write_fcc(const char *path, SEND_CONTEXT *sctx, const char *msgid, int, const char *);
+ int mutt_write_mime_body(struct Body *, FILE *);
+ int mutt_write_mime_header(struct Body *, FILE *);
+ int mutt_write_one_header(FILE *fp, const char *tag, const char *value, const char *pfx, int wraplen, int flags);
+diff --git a/send.c b/send.c
+index 11291231..a4a3d6e9 100644
+--- a/send.c
++++ b/send.c
+@@ -1324,7 +1324,7 @@ full_fcc:
+      * message was first postponed.
+      */
+     msg->received = time(NULL);
+-    rc = mutt_write_fcc(mutt_b2s(fcc), msg, NULL, 0, NULL);
++    rc = mutt_write_fcc(mutt_b2s(fcc), sctx, NULL, 0, NULL);
+     while (rc && !(flags & SEND_BATCH))
+     {
+       mutt_clear_error();
+@@ -1358,7 +1358,7 @@ full_fcc:
+           /* fall through */
+ 
+         case 1:   /*(r)etry */
+-          rc = mutt_write_fcc(mutt_b2s(fcc), msg, NULL, 0, NULL);
++          rc = mutt_write_fcc(mutt_b2s(fcc), sctx, NULL, 0, NULL);
+           break;
+ 
+         case -1:  /* abort */
+@@ -1594,7 +1594,7 @@ static int postpone_message(SEND_CONTEXT *sctx)
+   mutt_prepare_envelope(msg->env, 0);
+   mutt_env_to_intl(msg->env, NULL, NULL);        /* Handle bad IDNAs the next time. */
+ 
+-  if (mutt_write_fcc(NONULL(C_Postponed), msg,
++  if (mutt_write_fcc(NONULL(C_Postponed), sctx,
+                      (cur && (flags & SEND_REPLY)) ? cur->env->message_id : NULL,
+                       1, fcc) < 0)
+   {
+diff --git a/sendlib.c b/sendlib.c
+index 3bc1553f..6f80a62e 100644
+--- a/sendlib.c
++++ b/sendlib.c
+@@ -2975,8 +2975,9 @@ static void set_noconv_flags(struct Body *b, short flag)
+   }
+ }
+ 
+-int mutt_write_fcc(const char *path, struct Email *hdr, const char *msgid, int post, const char *fcc)
++int mutt_write_fcc(const char *path, SEND_CONTEXT *sctx, const char *msgid, int post, const char *fcc)
+ {
++  struct Email *hdr;
+   struct Context f;
+   struct Message *msg;
+   struct Buffer *tempfile = NULL;
+@@ -2986,6 +2987,8 @@ int mutt_write_fcc(const char *path, struct Email *hdr, const char *msgid, int post,
+   char buf[128];
+   int onm_flags;
+ 
++  hdr = sctx->msg;
++
+   if (post)
+     set_noconv_flags(hdr->content, 1);
+ 
+@@ -3068,8 +3071,8 @@ int mutt_write_fcc(const char *path, struct Email *hdr, const char *msgid, int post,
+     if (hdr->security & SIGN)
+     {
+       fputc('S', msg->fp);
+-      if (C_PgpSignAs)
+-        fprintf(msg->fp, "<%s>", C_PgpSignAs);
++      if (sctx->pgp_sign_as)
++        fprintf(msg->fp, "<%s>", sctx->pgp_sign_as);
+     }
+     if (hdr->security & INLINE)
+       fputc('I', msg->fp);
+@@ -3090,16 +3093,16 @@ int mutt_write_fcc(const char *path, struct Email *hdr, const char *msgid, int post,
+     if (hdr->security & ENCRYPT)
+     {
+       fputc('E', msg->fp);
+-      if (SmimeEncryptWith)
+-        fprintf(msg->fp, "C<%s>", SmimeEncryptWith);
++      if (sctx->smime_crypt_alg)
++        fprintf(msg->fp, "C<%s>", sctx->smime_crypt_alg);
+     }
+     if (hdr->security & OPPENCRYPT)
+       fputc('O', msg->fp);
+     if (hdr->security & SIGN)
+     {
+       fputc('S', msg->fp);
+-      if (C_SmimeSignAs)
+-        fprintf(msg->fp, "<%s>", C_SmimeSignAs);
++      if (sctx->smime_default_key)
++        fprintf(msg->fp, "<%s>", sctx->smime_default_key);
+     }
+     if (hdr->security & INLINE)
+       fputc('I', msg->fp);

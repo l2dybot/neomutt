@@ -1,0 +1,115 @@
+From 5cf8a04208fdb099bcd01849fff3dfe3fe923355 Mon Sep 17 00:00:00 2001
+From: Kevin McCarthy <kevin@8t8.us>
+Date: Sun, 8 Mar 2020 14:41:22 -0700
+Subject: Convert progress and socket_poll millis to unsigned long long
+
+64-bit platforms should already be using a 64-bit tv_sec, so we should
+use the same for the millis values.
+
+Upstream-commit: https://gitlab.com/muttmua/mutt/commit/5cf8a04208fdb099bcd01849fff3dfe3fe923355
+Co-authored-by: Richard Russon <rich@flatcap.org>
+---
+ gui/curs_lib.c    | 19 ++++++++++---------
+ gui/mutt_curses.h |  2 +-
+ mutt_socket.c | 10 ++++++----
+ 3 files changed, 17 insertions(+), 14 deletions(-)
+
+diff --git a/gui/curs_lib.c b/gui/curs_lib.c
+index 12db97f8..92eda9b1 100644
+--- a/gui/curs_lib.c
++++ b/gui/curs_lib.c
+@@ -649,8 +649,8 @@ void mutt_progress_init(struct Progress* progress, const char *msg,
+     mutt_debug(LL_DEBUG1, "gettimeofday failed: %d\n", errno));
+   /* if timestamp is 0 no time-based suppression is done */
+   if (C_TimeInc)
+-    progress->timestamp =((unsigned int) tv.tv_sec * 1000)
+-      +(unsigned int)(tv.tv_usec / 1000);
++    progress->timestamp_millis =((unsigned long long) tv.tv_sec * 1000ULL)
++      +(unsigned long long)(tv.tv_usec / 1000);
+   mutt_progress_update(progress, 0, 0);
+ }
+ 
+@@ -659,7 +659,7 @@ void mutt_progress_update(struct Progress* progress, long pos, int percent)
+   char posstr[128];
+   short update = 0;
+   struct timeval tv = { 0, 0 };
+-  unsigned int now = 0;
++  unsigned long long now_millis = 0;
+ 
+   if (option(OptNoCurses))
+     return;
+@@ -675,11 +675,12 @@ void mutt_progress_update(struct Progress* progress, long pos, int percent)
+     update = 1;
+ 
+   /* skip refresh if not enough time has passed */
+-  if (update && progress->timestamp && !gettimeofday(&tv, NULL))
++  if (update && progress->timestamp_millis && !gettimeofday(&tv, NULL))
+   {
+-    now =((unsigned int) tv.tv_sec * 1000)
+-      +(unsigned int)(tv.tv_usec / 1000);
+-    if (now && now - progress->timestamp < C_TimeInc)
++    now_millis =((unsigned long long) tv.tv_sec * 1000ULL)
++      +(unsigned long long)(tv.tv_usec / 1000);
++    if (now_millis &&
++       (now_millis - progress->timestamp_millis < C_TimeInc))
+       update = 0;
+   }
+ 
+@@ -700,8 +701,8 @@ void mutt_progress_update(struct Progress* progress, long pos, int percent)
+     mutt_debug(LL_DEBUG5, "updating progress: %s\n", posstr));
+ 
+     progress->pos = pos;
+-    if (now)
+-      progress->timestamp = now;
++    if (now_millis)
++      progress->timestamp_millis = now_millis;
+ 
+     if (progress->size > 0)
+     {
+diff --git a/gui/mutt_curses.h b/gui/mutt_curses.h
+index 8e88be76..f21e0eab 100644
+--- a/gui/mutt_curses.h
++++ b/gui/mutt_curses.h
+@@ -169,7 +169,7 @@ typedef struct
+   const char* msg;
+   long pos;
+   long size;
+-  unsigned int timestamp;
++  unsigned long long timestamp_millis;
+   char sizestr[128];
+ } struct Progress;
+ 
+diff --git a/mutt_socket.c b/mutt_socket.c
+index d3840842..83d8ddf7 100644
+--- a/mutt_socket.c
++++ b/mutt_socket.c
+@@ -432,14 +432,14 @@ int raw_socket_write(struct Connection* conn, const char* buf, size_t count)
+ int raw_socket_poll(struct Connection* conn, time_t wait_secs)
+ {
+   fd_set rfds;
+-  unsigned long wait_millis, post_t_millis;
++  unsigned long long wait_millis, post_t_millis;
+   struct timeval tv, pre_t, post_t;
+   int rv;
+ 
+   if (conn->fd < 0)
+     return -1;
+ 
+-  wait_millis = wait_secs * 1000UL;
++  wait_millis =(unsigned long long)wait_secs * 1000ULL;
+ 
+   FOREVER
+   {
+@@ -460,8 +460,10 @@ int raw_socket_poll(struct Connection* conn, time_t wait_secs)
+     if (SigInt)
+       mutt_query_exit();
+ 
+-    wait_millis +=(pre_t.tv_sec * 1000UL) +(pre_t.tv_usec / 1000);
+-    post_t_millis =(post_t.tv_sec * 1000UL) +(post_t.tv_usec / 1000);
++    wait_millis +=((unsigned long long)pre_t.tv_sec * 1000ULL) +
++     (unsigned long long)(pre_t.tv_usec / 1000);
++    post_t_millis =((unsigned long long)post_t.tv_sec * 1000ULL) +
++     (unsigned long long)(post_t.tv_usec / 1000);
+     if (wait_millis <= post_t_millis)
+       return 0;
+     wait_millis -= post_t_millis;

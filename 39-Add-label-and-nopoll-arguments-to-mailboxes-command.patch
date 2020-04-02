@@ -1,0 +1,634 @@
+From 1487ea6485745bc836026594aa05c9ad3921def2 Mon Sep 17 00:00:00 2001
+From: Kevin McCarthy <kevin@8t8.us>
+Date: Wed, 25 Mar 2020 15:07:48 -0700
+Subject: Add -label and -nopoll arguments to mailboxes command
+
+-nopoll allows adding the mailbox to the sidebar, or the mailbox
+browser menu, without incurring polling costs.
+
+-poll can be used to re-enable polling for a previously disabled
+mailbox.
+
+-label allows specifying an alternative string to show in the sidebar
+and mailbox browser menu.
+
+-nolabel removes a label from an existing mailbox.
+
+Change $sidebar_sort_method so that "alpha" and "name" will sort by
+the label if specified.  "path", however, will always sort by the
+actual mailbox path.
+
+Upstream-commit: https://gitlab.com/muttmua/mutt/commit/1487ea6485745bc836026594aa05c9ad3921def2
+Co-authored-by: Richard Russon <rich@flatcap.org>
+---
+ browser.c           |  15 ++-
+ core/mailbox.c             | 230 +++++++++++++++++++++++++++++++-------------
+ core/mailbox.h             |   7 +-
+ doc/manual.xml.head |  74 +++++++++++---
+ doc/neomuttrc.man.head |   2 +-
+ imap/browse.c       |   2 +-
+ imap/imap.c         |   3 +
+ init.h              |   8 +-
+ protos.h            |   1 +
+ sidebar.c           |  24 ++++-
+ 10 files changed, 268 insertions(+), 98 deletions(-)
+
+diff --git a/browser.c b/browser.c
+index 44902357..f9c37c95 100644
+--- a/browser.c
++++ b/browser.c
+@@ -496,7 +496,7 @@ static int examine_directory(struct Menu *menu, struct browser_state *state,
+     tmp = AllMailboxes;
+     while (tmp && mutt_str_strcmp(mutt_b2s(full_path), mutt_b2s(tmp->pathbuf)))
+       tmp = tmp->next;
+-    if (tmp && Context &&
++    if (tmp && Context && !tmp->nopoll &&
+         !mutt_str_strcmp(tmp->realpath, Context->realpath))
+     {
+       tmp->msg_count = Context->msgcount;
+@@ -528,16 +528,21 @@ static int examine_mailboxes(struct Menu *menu, struct browser_state *state)
+ 
+   do
+   {
+-    if (Context &&
++    if (Context && !tmp->nopoll &&
+         !mutt_str_strcmp(tmp->realpath, Context->realpath))
+     {
+       tmp->msg_count = Context->msgcount;
+       tmp->msg_unread = Context->unread;
+     }
+ 
+-    mutt_buffer_strcpy(mailbox, mutt_b2s(tmp->pathbuf));
+-    if (option(C_BrowserAbbreviateMailboxes))
+-      mutt_buffer_pretty_mailbox(mailbox);
++    if (tmp->label)
++      mutt_buffer_strcpy(mailbox, tmp->label);
++    else
++    {
++      mutt_buffer_strcpy(mailbox, mutt_b2s(tmp->pathbuf));
++      if (option(C_BrowserAbbreviateMailboxes))
++        mutt_buffer_pretty_mailbox(mailbox);
++    }
+ 
+ #ifdef USE_IMAP
+     if (mx_is_imap(mutt_b2s(tmp->pathbuf)))
+diff --git a/core/mailbox.c b/core/mailbox.c
+index 6389f1f9..426a4b2f 100644
+--- a/core/mailbox.c
++++ b/core/mailbox.c
+@@ -250,101 +250,196 @@ static void mailbox_free(struct Mailbox **mailbox)
+ 
+   mutt_buffer_free(& ((*mailbox)->pathbuf));
+   FREE(& ((*mailbox)->realpath));
++  FREE(& ((*mailbox)->label));
+   FREE(mailbox);
+ }
+ 
+-int mutt_parse_mailboxes(struct Buffer *path, struct Buffer *s, union pointer_long_t udata, struct Buffer *err)
++static struct Mailbox **find_buffy_slot(const char *path)
+ {
+-  struct Mailbox **tmp,*tmp1;
++  const char *p;
++  char rp[PATH_MAX];
++  struct Mailbox **slot;
++
++  p = realpath(path, rp);
++  for (slot = &AllMailboxes; *slot; slot = & ((*slot)->next))
++    if (mutt_str_strcmp(p ? p : path, (*slot)->realpath) == 0)
++      break;
++
++  return slot;
++}
++
++/* To avoid overwriting existing values:
++ * - label will be NULL if unspecified
++ * - nopoll will be -1 if unspecified
++ */
++static void buffy_add(struct Buffer *path, const char *label, int nopoll)
++{
++  struct Mailbox **tmp;
+   struct stat sb;
+-  char f1[PATH_MAX];
+-  char *p;
+-  long data = udata.l;
++  int new = 0;
+ 
+-  while (MoreArgs(s))
++  tmp = find_buffy_slot(mutt_b2s(path));
++  if (!*tmp)
+   {
+-    mutt_extract_token(path, s, 0);
++    new = 1;
++    *tmp = mailbox_new(mutt_b2s(path));
++#ifdef USE_SIDEBAR
++    mutt_sb_notify_mailbox(*tmp, 1);
++#endif
++  }
++
++  if (label)
++    mutt_str_replace(& (*tmp)->label, label);
+ 
+-    if (data == MUTT_UNMAILBOXES && mutt_str_strcmp(mutt_b2s(path),"*") == 0)
++  if (nopoll == -1)
++    nopoll =(*tmp)->nopoll;
++
++  if (new || (nopoll !=(*tmp)->nopoll))
++  {
++   (*tmp)->nopoll = nopoll;
++#ifdef USE_INOTIFY
++    if (!nopoll)
+     {
+-      for (tmp = &AllMailboxes; *tmp;)
+-      {
+-        tmp1=(*tmp)->next;
++     (*tmp)->magic = mx_get_magic(mutt_b2s((*tmp)->pathbuf));
++      mutt_monitor_add(*tmp);
++    }
++    else
++      mutt_monitor_remove(*tmp);
++#endif
++  }
++
++ (*tmp)->new = 0;
++ (*tmp)->notified = 1;
++ (*tmp)->newly_created = 0;
++
++  /* for check_mbox_size, it is important that if the folder is new(tested by
++   * reading it), the size is set to 0 so that later when we check we see
++   * that it increased .  without check_mbox_size we probably don't care.
++   */
++  if (!nopoll &&
++      option(C_CheckMboxSize) &&
++      stat(mutt_b2s((*tmp)->pathbuf), &sb) == 0 &&
++      !test_new_folder(mutt_b2s((*tmp)->pathbuf)))
++  {
++    /* some systems out there don't have an off_t type */
++   (*tmp)->size =(off_t) sb.st_size;
++  }
++  else
++   (*tmp)->size = 0;
++}
++
++static void buffy_remove(struct Mailbox **pbuffy)
++{
++  struct Mailbox *next;
++
++  next =(*pbuffy)->next;
++
+ #ifdef USE_SIDEBAR
+-        mutt_sb_notify_mailbox(*tmp, 0);
++  mutt_sb_notify_mailbox(*pbuffy, 0);
+ #endif
+ #ifdef USE_INOTIFY
+-        mutt_monitor_remove(*tmp);
++  if (!(*pbuffy)->nopoll)
++    mutt_monitor_remove(*pbuffy);
+ #endif
+-        mailbox_free(tmp);
+-        *tmp=tmp1;
+-      }
+-      return 0;
+-    }
++  mailbox_free(pbuffy);
+ 
+-    mutt_buffer_expand_path(path);
++  *pbuffy = next;
++}
++
++int mutt_parse_mailboxes(struct Buffer *path, struct Buffer *s, union pointer_long_t udata,
++                          struct Buffer *err)
++{
++  struct Buffer *label = NULL;
++  struct Buffer *mailbox = NULL;
++  int nopoll = -1, rc = -1;
++  int label_set = 0, mailbox_set = 0;
+ 
+-    /* Skip empty tokens. */
+-    if (!mutt_buffer_len(path)) continue;
++  mailbox = mutt_buffer_pool_get();
++  label = mutt_buffer_pool_get();
+ 
+-    /* avoid duplicates */
+-    p = realpath(mutt_b2s(path), f1);
+-    for (tmp = &AllMailboxes; *tmp; tmp = & ((*tmp)->next))
++  while (MoreArgs(s))
++  {
++    do
+     {
+-      if (mutt_str_strcmp(p ? p : mutt_b2s(path), (*tmp)->realpath) == 0)
++      mutt_extract_token(path, s, 0);
++
++      if (mutt_str_strcmp(mutt_b2s(path), "-poll") == 0)
++        nopoll = 0;
++      else if (mutt_str_strcmp(mutt_b2s(path), "-nopoll") == 0)
++        nopoll = 1;
++      else if (mutt_str_strcmp(mutt_b2s(path), "-label") == 0)
++      {
++        if (!MoreArgs(s))
++        {
++          mutt_buffer_strcpy(err, _("too few arguments"));
++          goto cleanup;
++        }
++        label_set = 1;
++        mutt_extract_token(label, s, 0);
++      }
++      else if (mutt_str_strcmp(mutt_b2s(path), "-nolabel") == 0)
+       {
+-        mutt_debug(LL_DEBUG3, "mailbox '%s' already registered as '%s'\n", mutt_b2s(path),
+-                  mutt_b2s((*tmp)->pathbuf)));
+-        break;
++        label_set = 1;
++        mutt_buffer_clear(label);
+       }
+-    }
++      else
++      {
++        mailbox_set = 1;
++        mutt_buffer_strcpy(mailbox, mutt_b2s(path));
++        mutt_buffer_expand_path(mailbox);
++        break;
++      }
++    } while (MoreArgs(s));
+ 
+-    if (data == MUTT_UNMAILBOXES)
++    if (!mutt_buffer_len(mailbox))
+     {
+-      if (*tmp)
++      if (!mailbox_set)
+       {
+-        tmp1=(*tmp)->next;
+-#ifdef USE_SIDEBAR
+-        mutt_sb_notify_mailbox(*tmp, 0);
+-#endif
+-#ifdef USE_INOTIFY
+-        mutt_monitor_remove(*tmp);
+-#endif
+-        mailbox_free(tmp);
+-        *tmp=tmp1;
++        mutt_buffer_strcpy(err, _("too few arguments"));
++        goto cleanup;
+       }
+-      continue;
+     }
++    else
++      buffy_add(mailbox, label_set ? mutt_b2s(label) : NULL, nopoll);
+ 
+-    if (!*tmp)
+-    {
+-      *tmp = mailbox_new(mutt_b2s(path));
+-#ifdef USE_SIDEBAR
+-      mutt_sb_notify_mailbox(*tmp, 1);
+-#endif
+-#ifdef USE_INOTIFY
+-     (*tmp)->magic = mx_get_magic(mutt_b2s((*tmp)->pathbuf));
+-      mutt_monitor_add(*tmp);
+-#endif
+-    }
++    mutt_buffer_clear(mailbox);
++    mutt_buffer_clear(label);
++    nopoll = -1;
++    label_set = 0;
++    mailbox_set = 0;
++  }
+ 
+-   (*tmp)->new = 0;
+-   (*tmp)->notified = 1;
+-   (*tmp)->newly_created = 0;
++  rc = 0;
+ 
+-    /* for check_mbox_size, it is important that if the folder is new(tested by
+-     * reading it), the size is set to 0 so that later when we check we see
+-     * that it increased .  without check_mbox_size we probably don't care.
+-     */
+-    if (option(C_CheckMboxSize) &&
+-        stat(mutt_b2s((*tmp)->pathbuf), &sb) == 0 &&
+-        !test_new_folder(mutt_b2s((*tmp)->pathbuf)))
++cleanup:
++  mutt_buffer_pool_release(&mailbox);
++  mutt_buffer_pool_release(&label);
++  return rc;
++}
++
++int mutt_parse_unmailboxes(struct Buffer *path, struct Buffer *s, union pointer_long_t udata, struct Buffer *err)
++{
++  struct Mailbox **pbuffy;
++
++  while (MoreArgs(s))
++  {
++    mutt_extract_token(path, s, 0);
++
++    if (mutt_str_strcmp(mutt_b2s(path),"*") == 0)
+     {
+-      /* some systems out there don't have an off_t type */
+-     (*tmp)->size =(off_t) sb.st_size;
++      pbuffy = &AllMailboxes;
++      while (*pbuffy)
++        buffy_remove(pbuffy);
++      return 0;
+     }
+-    else
+-     (*tmp)->size = 0;
++
++    mutt_buffer_expand_path(path);
++    if (!mutt_buffer_len(path))
++      continue;
++
++    pbuffy = find_buffy_slot(mutt_b2s(path));
++    if (*pbuffy)
++      buffy_remove(pbuffy);
+   }
+   return 0;
+ }
+@@ -579,6 +674,9 @@ int mutt_mailbox_check(int force)
+ 
+   for (tmp = AllMailboxes; tmp; tmp = tmp->next)
+   {
++    if (tmp->nopoll)
++      continue;
++
+ #ifdef USE_SIDEBAR
+     orig_new = tmp->new;
+     orig_count = tmp->msg_count;
+diff --git a/core/mailbox.h b/core/mailbox.h
+index 888b07d1..591e225f 100644
+--- a/core/mailbox.h
++++ b/core/mailbox.h
+@@ -19,15 +19,13 @@
+ #ifndef _BUFFY_H
+ #define _BUFFY_H
+ 
+-/*parameter to mutt_parse_mailboxes*/
+-#define MUTT_MAILBOXES   1
+-#define MUTT_UNMAILBOXES 2
+-
+ typedef struct buffy_t
+ {
+   struct Buffer *pathbuf;
+   const char *realpath; /* used for duplicate detection, context comparison,
+                            and the sidebar */
++  char *label;    /* an optional label for the mailbox */
++
+   off_t size;
+   struct buffy_t *next;
+   short new;                        /* mailbox has new mail */
+@@ -37,6 +35,7 @@ typedef struct buffy_t
+   int msg_unread;                /* number of unread messages */
+   int msg_flagged;                /* number of flagged messages */
+ 
++  short nopoll;                 /* if set, don't poll for new mail */
+   short notified;                /* user has been notified */
+   short magic;                        /* mailbox type */
+   short newly_created;                /* mbox or mmdf just popped into existence */
+diff --git a/doc/manual.xml.head b/doc/manual.xml.head
+index d81a1559..90e2dd90 100644
+--- a/doc/manual.xml.head
++++ b/doc/manual.xml.head
+@@ -3686,12 +3686,29 @@ to save read mail in more than a single mailbox).
+ 
+ <cmdsynopsis>
+ <command>mailboxes</command>
+-<arg choice="plain">
+-<replaceable class="parameter">mailbox</replaceable>
+-</arg>
+-<arg choice="opt" rep="repeat">
+-<replaceable class="parameter">mailbox</replaceable>
++<arg choice="opt">
++  <group choice="opt">
++    <arg choice="plain">
++      <replaceable class="parameter">-poll</replaceable>
++    </arg>
++    <arg choice="plain">
++      <replaceable class="parameter">-nopoll</replaceable>
++    </arg>
++  </group>
++  <group choice="opt">
++    <arg choice="opt">
++      <replaceable class="parameter">-label</replaceable>
++      <replaceable>label</replaceable>
++    </arg>
++    <arg choice="plain">
++      <replaceable class="parameter">-nolabel</replaceable>
++    </arg>
++  </group>
++  <arg choice="plain">
++    <replaceable class="parameter">mailbox</replaceable>
++  </arg>
+ </arg>
++<arg choice="opt" rep="repeat"></arg>
+ 
+ <command>unmailboxes</command>
+ <group choice="req">
+@@ -3710,9 +3727,25 @@ checked for new messages periodically.
+ </para>
+ 
+ <para>
+-<emphasis>folder</emphasis> can either be a local file or directory
++To disable polling, specify <literal>-nopoll</literal> before the
++mailbox name.  The <literal>-poll</literal> argument can be used to
++reenable polling for an existing mailbox.  If unspecified: a new
++mailbox will poll by default, while an existing mailbox will be
++unchanged.
++</para>
++
++<para>
++The <literal>-label</literal> argument can be used to specify an
++alternative label to print in the sidebar or mailbox browser instead
++of the mailbox path.  A label may be removed via the
++<literal>-nolabel</literal> argument.  If unspecified, an existing
++mailbox label will be unchanged.
++</para>
++
++<para>
++<emphasis>mailbox</emphasis> can either be a local file or directory
+(Mbox/Mmdf or Folder/Mh). If Mutt was built with POP and/or IMAP
+-support, <emphasis>folder</emphasis> can also be a POP/IMAP folder
++support, <emphasis>mailbox</emphasis> can also be a POP/IMAP folder
+ URL. The URL syntax is described in <xref linkend="url-syntax"/>, POP
+ and IMAP are described in <xref linkend="pop"/> and <xref
+ linkend="imap"/> respectively.
+@@ -11055,12 +11088,29 @@ The following are the commands understood by Mutt:
+ <listitem>
+ <cmdsynopsis>
+ <command><link linkend="mailboxes">mailboxes</link></command>
+-<arg choice="plain">
+-<replaceable class="parameter">mailbox</replaceable>
+-</arg>
+-<arg choice="opt" rep="repeat">
+-<replaceable class="parameter">mailbox</replaceable>
++<arg choice="opt">
++  <group choice="opt">
++    <arg choice="plain">
++      <replaceable class="parameter">-poll</replaceable>
++    </arg>
++    <arg choice="plain">
++      <replaceable class="parameter">-nopoll</replaceable>
++    </arg>
++  </group>
++  <group choice="opt">
++    <arg choice="opt">
++      <replaceable class="parameter">-label</replaceable>
++      <replaceable>label</replaceable>
++    </arg>
++    <arg choice="plain">
++      <replaceable class="parameter">-nolabel</replaceable>
++    </arg>
++  </group>
++  <arg choice="plain">
++    <replaceable class="parameter">mailbox</replaceable>
++  </arg>
+ </arg>
++<arg choice="opt" rep="repeat"></arg>
+ 
+ <command><link linkend="mailboxes">unmailboxes</link></command>
+ <group choice="req">
+diff --git a/doc/neomuttrc.man.head b/doc/neomuttrc.man.head
+index 4e5ee934..7fd1b6e6 100644
+--- a/doc/neomuttrc.man.head
++++ b/doc/neomuttrc.man.head
+@@ -299,7 +299,7 @@ messages will be moved to that folder when the mail folder is left.
+ The first matching \fBmbox-hook\fP applies.
+ .PP
+ .nf
+-\fBmailboxes\fP \fIfilename\fP [ \fIfilename\fP ... ]
++\fBmailboxes\fP [[\fB-poll\fP | \fB-nopoll\fP] [[\fB-label\fP \fIlabel\fP] | \fB-nolabel\fP] \fIfilename\fP] [ ... ]
+ \fBunmailboxes\fP [ \fB*\fP | \fIfilename\fP ... ]
+ .fi
+ .IP
+diff --git a/imap/browse.c b/imap/browse.c
+index fee412d6..9245fe12 100644
+--- a/imap/browse.c
++++ b/imap/browse.c
+@@ -454,7 +454,7 @@ static void imap_add_folder(char delim, char *folder, int noselect,
+     b = b->next;
+   if (b)
+   {
+-    if (Context &&
++    if (Context && !b->nopoll &&
+         !mutt_str_strcmp(b->realpath, Context->realpath))
+     {
+       b->msg_count = Context->msgcount;
+diff --git a/imap/imap.c b/imap/imap.c
+index 5e3502fc..bdd99dff 100644
+--- a/imap/imap.c
++++ b/imap/imap.c
+@@ -1735,6 +1735,9 @@ int imap_mbox_check_stats(int force, int check_stats)
+     if (mailbox->magic != MUTT_IMAP)
+       continue;
+ 
++    if (mailbox->nopoll)
++      continue;
++
+     if (imap_get_mailbox(mutt_b2s(mailbox->pathbuf), &idata, name, sizeof(name)) < 0)
+     {
+       mailbox->new = 0;
+diff --git a/init.h b/init.h
+index 28773a42..50178072 100644
+--- a/init.h
++++ b/init.h
+@@ -4551,11 +4551,11 @@ const struct mapping_t SortKeyMethods[] = {
+ };
+ 
+ const struct mapping_t SortSidebarMethods[] = {
+-  { "alpha",                SORT_PATH },
++  { "alpha",                SORT_SUBJECT },
+   { "count",                SORT_COUNT },
+   { "flagged",                SORT_FLAGGED },
+   { "mailbox-order",        SORT_ORDER },
+-  { "name",                SORT_PATH },
++  { "name",                SORT_SUBJECT },
+   { "new",                SORT_UNREAD },  /* kept for compatibility */
+   { "path",                SORT_PATH },
+   { "unread",                SORT_UNREAD },
+@@ -4649,8 +4649,8 @@ const struct command_t Commands[] = {
+   { "index-format-hook",mutt_parse_idxfmt_hook, {.l=MUTT_IDXFMTHOOK} },
+   { "lists",                parse_lists,                {.l=0} },
+   { "macro",                mutt_parse_macro,        {.l=0} },
+-  { "mailboxes",        mutt_parse_mailboxes,        {.l=MUTT_MAILBOXES} },
+-  { "unmailboxes",        mutt_parse_mailboxes,        {.l=MUTT_UNMAILBOXES} },
++  { "mailboxes",        mutt_parse_mailboxes,        {.l=0} },
++  { "unmailboxes",        mutt_parse_unmailboxes,        {.l=0} },
+   { "mailto_allow",        parse_list,                {.p=&MailToAllow} },
+   { "unmailto_allow",        parse_unlist,                {.p=&MailToAllow} },
+   { "message-hook",        mutt_parse_hook,        {.l=MUTT_MESSAGE_HOOK} },
+diff --git a/protos.h b/protos.h
+index ad90a01e..8a277ac1 100644
+--- a/protos.h
++++ b/protos.h
+@@ -361,6 +361,7 @@ int mutt_parse_hook(struct Buffer *, struct Buffer *, union pointer_long_t, struct Buffer *);
+ int mutt_parse_idxfmt_hook(struct Buffer *, struct Buffer *, union pointer_long_t, struct Buffer *);
+ int mutt_parse_macro(struct Buffer *, struct Buffer *, union pointer_long_t, struct Buffer *);
+ int mutt_parse_mailboxes(struct Buffer *, struct Buffer *, union pointer_long_t, struct Buffer *);
++int mutt_parse_unmailboxes(struct Buffer *, struct Buffer *, union pointer_long_t, struct Buffer *);
+ int mutt_parse_mono(struct Buffer *, struct Buffer *, union pointer_long_t, struct Buffer *);
+ int mutt_parse_unmono(struct Buffer *, struct Buffer *, union pointer_long_t, struct Buffer *);
+ int mutt_parse_push(struct Buffer *, struct Buffer *, union pointer_long_t, struct Buffer *);
+diff --git a/sidebar.c b/sidebar.c
+index be2133b9..1a3490f8 100644
+--- a/sidebar.c
++++ b/sidebar.c
+@@ -270,6 +270,10 @@ static int cb_qsort_sbe(const void *a, const void *b)
+     case SORT_PATH:
+       result = mutt_str_strcasecmp(mutt_b2s(b1->pathbuf), mutt_b2s(b2->pathbuf));
+       break;
++    case SORT_SUBJECT:
++      result = mutt_str_strcasecmp(b1->label ? b1->label : mutt_b2s(b1->pathbuf),
++                                b2->label ? b2->label : mutt_b2s(b2->pathbuf));
++      break;
+   }
+ 
+   if (C_SidebarSortMethod & SORT_REVERSE)
+@@ -366,7 +370,8 @@ static void sort_entries(void)
+   if ((ssm == SORT_COUNT)     ||
+      (ssm == SORT_UNREAD)    ||
+      (ssm == SORT_FLAGGED)   ||
+-     (ssm == SORT_PATH))
++     (ssm == SORT_PATH)      ||
++     (ssm == SORT_SUBJECT))
+     qsort(Entries, EntryCount, sizeof(*Entries), cb_qsort_sbe);
+   else if ((ssm == SORT_ORDER) &&
+           (C_SidebarSortMethod != PreviousSort))
+@@ -665,7 +670,7 @@ static void draw_sidebar(int num_rows, int num_cols, int div_width)
+       SET_COLOR(MT_COLOR_NORMAL);
+ 
+     mutt_window_move(MuttSidebarWindow, row, 0);
+-    if (Context && Context->realpath &&
++    if (Context && Context->realpath && !b->nopoll &&
+         !mutt_str_strcmp(b->realpath, Context->realpath))
+     {
+       b->msg_unread  = Context->unread;
+@@ -762,6 +767,10 @@ static void draw_sidebar(int num_rows, int num_cols, int div_width)
+         sidebar_folder_name += i;
+       }
+ 
++      /* For labels, ignore shortpath, but allow indentation */
++      if (b->label)
++        sidebar_folder_name = b->label;
++
+       if (option(C_SidebarFolderIndent) && (indent_width > 0))
+       {
+         mutt_buffer_clear(indent_folder_name);
+@@ -771,6 +780,8 @@ static void draw_sidebar(int num_rows, int num_cols, int div_width)
+         sidebar_folder_name = mutt_b2s(indent_folder_name);
+       }
+     }
++    else if (b->label)
++      sidebar_folder_name = b->label;
+ 
+     char str[256];
+     make_sidebar_entry(str, sizeof(str), w, sidebar_folder_name, entry);
+@@ -1102,9 +1113,12 @@ void mutt_sb_set_mailbox_stats(const struct Context *ctx)
+   {
+     if (!mutt_str_strcmp(b->realpath, ctx->realpath))
+     {
+-      b->msg_unread  = ctx->unread;
+-      b->msg_count   = ctx->msgcount;
+-      b->msg_flagged = ctx->flagged;
++      if (!b->nopoll)
++      {
++        b->msg_unread  = ctx->unread;
++        b->msg_count   = ctx->msgcount;
++        b->msg_flagged = ctx->flagged;
++      }
+       break;
+     }
+   }

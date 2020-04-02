@@ -1,0 +1,48 @@
+From 1a0b525adb1b0d5e907624e02494d04f39cb00a2 Mon Sep 17 00:00:00 2001
+From: Kevin McCarthy <kevin@8t8.us>
+Date: Sun, 29 Mar 2020 15:17:32 -0700
+Subject: Mention -nopoll in New Mail Detection manual section
+
+Add a brief mention a couple times to help make more users aware of
+the flag.
+
+Upstream-commit: https://gitlab.com/muttmua/mutt/commit/1a0b525adb1b0d5e907624e02494d04f39cb00a2
+Co-authored-by: Richard Russon <rich@flatcap.org>
+---
+ doc/manual.xml.head | 16 +++++++++-------
+ 1 file changed, 9 insertions(+), 7 deletions(-)
+
+diff --git a/doc/manual.xml.head b/doc/manual.xml.head
+index ed471221..cd0efa18 100644
+--- a/doc/manual.xml.head
++++ b/doc/manual.xml.head
+@@ -6909,8 +6909,9 @@ When unset, Mutt will notify you of any new mail in the mailbox.
+ When in the index menu and being idle(also see <link
+ linkend="timeout">$timeout</link>), Mutt periodically checks for new
+ mail in all folders which have been configured via the
+-<command>mailboxes</command> command. The interval depends on the folder
+-type: for local/IMAP folders it consults <link
++<command>mailboxes</command> command(excepting those specified with
++the <literal>-nopoll</literal> flag).  The interval depends on the
++folder type: for local/IMAP folders it consults <link
+ linkend="mail-check">$mail_check</link> and <link
+ linkend="pop-checkinterval">$pop_checkinterval</link> for POP folders.
+ </para>
+@@ -6954,11 +6955,12 @@ to immediately open the next folder with unread mail(if any).
+ <para>
+ When the <emphasis>Inotify</emphasis> mechanism for monitoring of
+ files is supported(Linux only) and not disabled at compilation time,
+-Mutt immediately notifies about new mail for all folders configured via
+-the <link linkend="mailboxes"><command>mailboxes</command></link>
+-command.  Dependent on
+-<link linkend="mailbox-formats">mailbox format</link> also added
+-<emphasis>old</emphasis> mails are tracked(not for Folder).
++Mutt immediately notifies about new mail for all folders configured
++via the <link linkend="mailboxes"><command>mailboxes</command></link>
++command(excepting those specified with the <literal>-nopoll</literal>
++flag).  Dependent on <link linkend="mailbox-formats">mailbox
++format</link> also added <emphasis>old</emphasis> mails are tracked
++(not for Folder).
+ </para>
+ 
+ <para>

@@ -1,0 +1,261 @@
+From 88d3d6d463b9a4dfd9dd6ccfe0b93112c7865b3a Mon Sep 17 00:00:00 2001
+From: Kevin McCarthy <kevin@8t8.us>
+Date: Thu, 30 Jan 2020 16:12:10 -0800
+Subject: Use sctx->signas values in compose menu
+
+todo: we need to fix the send_menus.
+We need to save/restore the globals in mutt_protect().
+
+Upstream-commit: https://gitlab.com/muttmua/mutt/commit/88d3d6d463b9a4dfd9dd6ccfe0b93112c7865b3a
+Co-authored-by: Richard Russon <rich@flatcap.org>
+---
+ compose.c    | 11 +++++++----
+ headers.c    |  3 ++-
+ ncrypt/crypt.h |  2 +-
+ postpone.c   | 13 +++++++------
+ send.c       | 43 ++++++-------------------------------------
+ send.h       |  4 ++++
+ 6 files changed, 27 insertions(+), 49 deletions(-)
+
+diff --git a/compose.c b/compose.c
+index e211c3bd..bba75a43 100644
+--- a/compose.c
++++ b/compose.c
+@@ -172,6 +172,7 @@ typedef struct
+ {
+   struct Email *msg;
+   struct Buffer *fcc;
++  SEND_CONTEXT *sctx;
+ #ifdef USE_AUTOCRYPT
+   enum AutocryptRec autocrypt_rec;
+   int autocrypt_rec_override;
+@@ -279,6 +280,7 @@ static void autocrypt_compose_menu(struct Email *msg)
+ static void redraw_crypt_lines(struct ComposeRedrawData *rd)
+ {
+   struct Email *msg = rd->msg;
++  SEND_CONTEXT *sctx = rd->sctx;
+ 
+   SET_COLOR(MT_COLOR_COMPOSE_HEADER);
+   mutt_window_mvprintw(MuttIndexWindow, HDR_CRYPT, 0,
+@@ -340,7 +342,7 @@ static void redraw_crypt_lines(struct ComposeRedrawData *rd)
+     SET_COLOR(MT_COLOR_COMPOSE_HEADER);
+     printw("%*s", HeaderPadding[HDR_CRYPTINFO], _(Prompts[HDR_CRYPTINFO]));
+     NORMAL_COLOR;
+-    printw("%s", C_PgpSignAs ? C_PgpSignAs : _("<default>"));
++    printw("%s", sctx->pgp_sign_as ? sctx->pgp_sign_as : _("<default>"));
+   }
+ 
+   if ((WithCrypto & APPLICATION_SMIME)
+@@ -349,18 +351,18 @@ static void redraw_crypt_lines(struct ComposeRedrawData *rd)
+     SET_COLOR(MT_COLOR_COMPOSE_HEADER);
+     printw("%*s", HeaderPadding[HDR_CRYPTINFO], _(Prompts[HDR_CRYPTINFO]));
+     NORMAL_COLOR;
+-    printw("%s", C_SmimeSignAs ? C_SmimeSignAs : _("<default>"));
++    printw("%s", sctx->smime_default_key ? sctx->smime_default_key : _("<default>"));
+   }
+ 
+   if ((WithCrypto & APPLICATION_SMIME)
+       && (msg->security & APPLICATION_SMIME)
+       && (msg->security & ENCRYPT)
+-      && SmimeEncryptWith)
++      && sctx->smime_crypt_alg)
+   {
+     SET_COLOR(MT_COLOR_COMPOSE_HEADER);
+     mutt_window_mvprintw(MuttIndexWindow, HDR_CRYPTINFO, 40, "%s", _("Encrypt with: "));
+     NORMAL_COLOR;
+-    printw("%s", NONULL(SmimeEncryptWith));
++    printw("%s", NONULL(sctx->smime_crypt_alg));
+   }
+ 
+ #ifdef USE_AUTOCRYPT
+@@ -1036,6 +1038,7 @@ int mutt_compose_menu(SEND_CONTEXT *sctx)
+ 
+   rd.msg = msg;
+   rd.fcc = sctx->fcc;
++  rd.sctx = sctx;
+ 
+   menu = mutt_menu_new(MENU_COMPOSE);
+   menu->offset = HDR_ATTACH;
+diff --git a/mutt_header.c b/mutt_header.c
+index 96552873..aaed433a 100644
+--- a/mutt_header.c
++++ b/mutt_header.c
+@@ -192,7 +192,8 @@ void mutt_edit_headers(const char *editor,
+     else if ((WithCrypto & APPLICATION_PGP)
+              && mutt_str_strncasecmp("pgp:", cur->data, 4) == 0)
+     {
+-      msg->security = mutt_parse_crypt_hdr(cur->data + 4, 0, APPLICATION_PGP);
++      msg->security = mutt_parse_crypt_hdr(cur->data + 4, 0, APPLICATION_PGP,
++                                            sctx);
+       if (msg->security)
+         msg->security |= APPLICATION_PGP;
+       keep = 0;
+diff --git a/ncrypt/crypt.h b/ncrypt/crypt.h
+index ea0337a5..8da5c06c 100644
+--- a/ncrypt/crypt.h
++++ b/ncrypt/crypt.h
+@@ -131,7 +131,7 @@ int mutt_protected_headers_handler(struct Body *, struct State *);
+ 
+ int mutt_signed_handler(struct Body *, struct State *);
+ 
+-int mutt_parse_crypt_hdr(const char *, int, int);
++int mutt_parse_crypt_hdr(const char *, int, int, SEND_CONTEXT *);
+ 
+ 
+ void convert_to_7bit(struct Body *);
+diff --git a/postpone.c b/postpone.c
+index f5d89517..f45b9759 100644
+--- a/postpone.c
++++ b/postpone.c
+@@ -369,7 +369,7 @@ int mutt_get_postponed(struct Context *ctx, SEND_CONTEXT *sctx)
+                  || mutt_str_strncmp("X-Mutt-PGP:", tmp->data, 11) == 0))
+     {
+       sctx->msg->security = mutt_parse_crypt_hdr(strchr(tmp->data, ':') + 1, 1,
+-                                                  APPLICATION_PGP);
++                                                  APPLICATION_PGP, sctx);
+       sctx->msg->security |= APPLICATION_PGP;
+ 
+       /* remove the pgp field */
+@@ -386,7 +386,7 @@ int mutt_get_postponed(struct Context *ctx, SEND_CONTEXT *sctx)
+              && mutt_str_strncmp("X-Mutt-SMIME:", tmp->data, 13) == 0)
+     {
+       sctx->msg->security = mutt_parse_crypt_hdr(strchr(tmp->data, ':') + 1, 1,
+-                                                  APPLICATION_SMIME);
++                                                  APPLICATION_SMIME, sctx);
+       sctx->msg->security |= APPLICATION_SMIME;
+ 
+       /* remove the smime field */
+@@ -439,7 +439,8 @@ int mutt_get_postponed(struct Context *ctx, SEND_CONTEXT *sctx)
+ 
+ 
+ 
+-int mutt_parse_crypt_hdr(const char *p, int set_empty_signas, int crypt_app)
++int mutt_parse_crypt_hdr(const char *p, int set_empty_signas, int crypt_app,
++                          SEND_CONTEXT *sctx)
+ {
+   char smime_cryptalg[1024] = "\0";
+   char sign_as[1024] = "\0", *q;
+@@ -555,19 +556,19 @@ int mutt_parse_crypt_hdr(const char *p, int set_empty_signas, int crypt_app)
+ 
+   /* the cryptalg field must not be empty */
+   if ((WithCrypto & APPLICATION_SMIME) && *smime_cryptalg)
+-    mutt_str_replace(&SmimeEncryptWith, smime_cryptalg);
++    mutt_str_replace(&sctx->smime_crypt_alg, smime_cryptalg);
+ 
+   /* Set {Smime,Pgp}SignAs, if desired. */
+ 
+   if ((WithCrypto & APPLICATION_PGP) && (crypt_app == APPLICATION_PGP)
+       && (flags & SIGN)
+       && (set_empty_signas || *sign_as))
+-    mutt_str_replace(&C_PgpSignAs, sign_as);
++    mutt_str_replace(&sctx->pgp_sign_as, sign_as);
+ 
+   if ((WithCrypto & APPLICATION_SMIME) && (crypt_app == APPLICATION_SMIME)
+       && (flags & SIGN)
+       && (set_empty_signas || *sign_as))
+-    mutt_str_replace(&C_SmimeSignAs, sign_as);
++    mutt_str_replace(&sctx->smime_default_key, sign_as);
+ 
+   return flags;
+ }
+diff --git a/send.c b/send.c
+index e3ce2449..e558921c 100644
+--- a/send.c
++++ b/send.c
+@@ -1626,11 +1626,15 @@ static void send_ctx_free(SEND_CONTEXT **psctx)
+   mutt_buffer_free(&sctx->fcc);
+   FREE(&sctx->ctx_realpath);
+ 
++  FREE(&sctx->pgp_sign_as);
++  FREE(&sctx->smime_default_key);
++  FREE(&sctx->smime_crypt_alg);
++
+   FREE(psctx);
+ }
+ 
+ static int send_message_setup(SEND_CONTEXT *sctx, const char *tempfile,
+-                               struct Context *ctx, char **pgp_signas, char **smime_signas)
++                               struct Context *ctx)
+ {
+   FILE *tempfp = NULL;
+   int rv = -1, i;
+@@ -1657,14 +1661,6 @@ static int send_message_setup(SEND_CONTEXT *sctx, const char *tempfile,
+   sctx->fcc = mutt_buffer_new();
+   mutt_buffer_increase_size(sctx->fcc, 1024);
+ 
+-  if (sctx->flags & SEND_POSTPONED)
+-  {
+-    if (WithCrypto & APPLICATION_PGP)
+-      *pgp_signas = mutt_str_strdup(C_PgpSignAs);
+-    if (WithCrypto & APPLICATION_SMIME)
+-      *smime_signas = mutt_str_strdup(C_SmimeSignAs);
+-  }
+-
+   /* Delay expansion of aliases until absolutely necessary--shouldn't
+    * be necessary unless we are prompting the user or about to execute a
+    * send-hook.
+@@ -2392,8 +2388,6 @@ mutt_send_message(int flags,            /* send mode */
+                    struct Email *cur)          /* current message */
+ {
+   SEND_CONTEXT *sctx;
+-  char *pgp_signas = NULL;
+-  char *smime_signas = NULL;
+   int rv = -1;
+   int resume_rc;
+ 
+@@ -2422,15 +2416,7 @@ mutt_send_message(int flags,            /* send mode */
+    * of the msg header don't disappear after returning!!!
+    */
+ 
+-  /* TODO:
+-   * mutt_get_postponed() and edit headers set C_PgpSignAs/C_SmimeSignAs.
+-   * these need to be set in the sctx instead, and the globals swapped
+-   * out around the "post-composemenu-send" function.  Note that edit
+-   * headers and get_postponed have different behavior for an empty
+-   * value.
+-   */
+-
+-  if (send_message_setup(sctx, tempfile, ctx, &pgp_signas, &smime_signas) < 0)
++  if (send_message_setup(sctx, tempfile, ctx) < 0)
+     goto cleanup;
+ 
+ 
+@@ -2449,23 +2435,6 @@ mutt_send_message(int flags,            /* send mode */
+   rv = 0;
+ 
+ cleanup:
+-  /* TODO: this should be based on sctx and moved around
+-   * the resumable edit/compose/send function
+-   */
+-  if (sctx->flags & SEND_POSTPONED)
+-  {
+-    if (WithCrypto & APPLICATION_PGP)
+-    {
+-      FREE(&C_PgpSignAs);
+-      C_PgpSignAs = pgp_signas;
+-    }
+-    if (WithCrypto & APPLICATION_SMIME)
+-    {
+-      FREE(&C_SmimeSignAs);
+-      C_SmimeSignAs = smime_signas;
+-    }
+-  }
+-
+   send_ctx_free(&sctx);
+ 
+   return rv;
+diff --git a/send.h b/send.h
+index f5d03c9c..105f6cb6 100644
+--- a/send.h
++++ b/send.h
+@@ -34,6 +34,10 @@ typedef struct send_ctx
+   struct Buffer *fcc;
+ 
+   char *ctx_realpath;
++
++  char *pgp_sign_as;
++  char *smime_default_key;
++  char *smime_crypt_alg;
+ } SEND_CONTEXT;
+ 
+ struct Address *mutt_remove_xrefs(struct Address *, struct Address *);
