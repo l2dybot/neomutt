@@ -37,6 +37,7 @@ enum Prex
   PREX_RFC5322_DATE,          ///< `[Mon, 16 Mar 2020 15:09:35 -0700]`
   PREX_RFC5322_DATE_CFWS,     ///< `[Mon, (Comment) 16 Mar 2020 15:09:35 -0700]`
   PREX_IMAP_DATE,             ///< `[16-MAR-2020 15:09:35 -0700]`
+  PREX_MBOX_FROM,             ///< `[From god@heaven.af.mil Sat Jan  3 01:05:34 1996]`
   PREX_MAX
 };
 
@@ -186,6 +187,24 @@ enum PrexImapDate
   PREX_IMAP_DATE_MATCH_TIME,   ///< `15-MAR-2020 [15:09:35] -0700`
   PREX_IMAP_DATE_MATCH_TZ,     ///< `15-MAR-2020 15:09:35 [-0700]`
   PREX_IMAP_DATE_MATCH_MAX
+};
+
+/**
+ * enum PrexMboxFromline - Regex matches for an mbox-style From line
+ *
+ * @note The []s show the matching path of the IMAP date
+ */
+enum PrexMboxFrom
+{
+  PREX_MBOX_FROM_MATCH_ENVSENDER, /// `From [god@heaven.af.mil] Sat Jan  3 01:05:34 1996`
+  PREX_MBOX_FROM_MATCH_DOW,       /// `From god@heaven.af.mil [Sat] Jan  3 01:05:34 1996`
+  PREX_MBOX_FROM_MATCH_MONTH,     /// `From god@heaven.af.mil Sat [Jan]  3 01:05:34 1996`
+  PREX_MBOX_FROM_MATCH_DAY,       /// `From god@heaven.af.mil Sat Jan [ 3] 01:05:34 1996`
+  PREX_MBOX_FROM_MATCH_DAY1,      /// `From god@heaven.af.mil Sat Jan  [3] 01:05:34 1996`
+  PREX_MBOX_FROM_MATCH_DAY2,      /// `From god@heaven.af.mil Sat Jan [10] 01:05:34 1996`
+  PREX_MBOX_FROM_MATCH_TIME,      /// `From god@heaven.af.mil Sat Jan 10 [01:05:34] 1996`
+  PREX_MBOX_FROM_MATCH_YEAR,      /// `From god@heaven.af.mil Sat Jan 10 01:05:34 [1996]`
+  PREX_MBOX_FROM_MATCH_MAX
 };
 
 regmatch_t *mutt_prex_capture(enum Prex which, const char *str);
