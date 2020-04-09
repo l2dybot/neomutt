@@ -178,12 +178,15 @@ static struct PrexStorage *prex(enum Prex which)
       PREX_MBOX_FROM,
       PREX_MBOX_FROM_MATCH_MAX,
       /* Spec: http://qmail.omnis.ch/man/man5/mbox.html */
-      "$From "                 // From
+      "^From "                 // From
       "(.*) "                  // Sender
-      PREX_MONTH               // Month
       PREX_DOW                 // Day of week
-      "( ([0-9])|([0-9]{2}))"  // Day
+      " "
+      PREX_MONTH               // Month
+      " ( ([0-9])|([0-9]{2}))"  // Day
+      " "
       PREX_TIME                // Time
+      " "
       PREX_YEAR                // Year
     }
     /* clang-format on */

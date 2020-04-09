@@ -196,6 +196,7 @@ enum PrexImapDate
  */
 enum PrexMboxFrom
 {
+  PREX_MBOX_FROM_MATCH_FULL,      /// `[From god@heaven.af.mil Sat Jan  3 01:05:34 1996]`
   PREX_MBOX_FROM_MATCH_ENVSENDER, /// `From [god@heaven.af.mil] Sat Jan  3 01:05:34 1996`
   PREX_MBOX_FROM_MATCH_DOW,       /// `From god@heaven.af.mil [Sat] Jan  3 01:05:34 1996`
   PREX_MBOX_FROM_MATCH_MONTH,     /// `From god@heaven.af.mil Sat [Jan]  3 01:05:34 1996`
